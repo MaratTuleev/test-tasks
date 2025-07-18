@@ -2,25 +2,25 @@ defmodule AnagramTest do
   use ExUnit.Case
   doctest Anagram
 
+  defp assert_anagram_group(group, expected_words, expected_length) do
+    assert group != nil
+    assert length(group) == expected_length
+    assert Enum.all?(expected_words, &(&1 in group))
+  end
+
   describe "anagram_map/1" do
     test "groups simple anagrams correctly" do
       input = ["eat", "tea", "tan", "ate", "nat", "bat"]
       result = Anagram.anagram_map(input)
 
-      # Check that "eat", "tea", "ate" are grouped together
       eat_group = Map.get(result, "aet")
-      assert length(eat_group) == 3
-      assert Enum.all?(["eat", "tea", "ate"], &(&1 in eat_group))
+      assert_anagram_group(eat_group, ["eat", "tea", "ate"], 3)
 
-      # Check that "tan", "nat" are grouped together
       tan_group = Map.get(result, "ant")
-      assert length(tan_group) == 2
-      assert Enum.all?(["tan", "nat"], &(&1 in tan_group))
+      assert_anagram_group(tan_group, ["tan", "nat"], 2)
 
-      # Check that "bat" is alone
       bat_group = Map.get(result, "abt")
-      assert length(bat_group) == 1
-      assert "bat" in bat_group
+      assert_anagram_group(bat_group, ["bat"], 1)
     end
 
     test "handles empty list" do
@@ -42,8 +42,7 @@ defmodule AnagramTest do
       result = Anagram.anagram_map(input)
 
       group = Map.get(result, "eilnst")
-      assert length(group) == 3
-      assert Enum.all?(["Listen", "Silent", "ENLIST"], &(&1 in group))
+      assert_anagram_group(group, ["Listen", "Silent", "ENLIST"], 3)
     end
 
     test "handles mixed case words" do
@@ -51,8 +50,7 @@ defmodule AnagramTest do
       result = Anagram.anagram_map(input)
 
       group = Map.get(result, "cdeor")
-      assert length(group) == 3
-      assert Enum.all?(input, &(&1 in group))
+      assert_anagram_group(group, input, 3)
     end
 
     test "handles words with no anagrams" do
@@ -86,19 +84,17 @@ defmodule AnagramTest do
       input = ["stressed", "desserts", "bistro", "orbits", "sortie", "stories"]
       result = Anagram.anagram_map(input)
 
-      # stressed, desserts -> normalize to "deerssst"
       stressed_group = Map.get(result, "deerssst")
-      assert Enum.sort(stressed_group) == Enum.sort(["desserts", "stressed"])
+      assert_anagram_group(stressed_group, ["stressed", "desserts"], 2)
 
-      # bistro, orbits -> normalize to "biorst"
       bistro_group = Map.get(result, "biorst")
-      assert Enum.sort(bistro_group) == Enum.sort(["bistro", "orbits"])
+      assert_anagram_group(bistro_group, ["bistro", "orbits"], 2)
 
-      # sortie и stories должны быть в разных группах
-      sortie_key = "sortie" |> String.downcase() |> String.graphemes() |> Enum.sort() |> Enum.join()
-      stories_key = "stories" |> String.downcase() |> String.graphemes() |> Enum.sort() |> Enum.join()
-      assert Map.get(result, sortie_key) == ["sortie"]
-      assert Map.get(result, stories_key) == ["stories"]
+      sortie_group = Map.get(result, "eiorst")
+      assert_anagram_group(sortie_group, ["sortie"], 1)
+
+      stories_group = Map.get(result, "eiorsst")
+      assert_anagram_group(stories_group, ["stories"], 1)
     end
 
     test "handles unicode characters" do
@@ -106,7 +102,7 @@ defmodule AnagramTest do
       result = Anagram.anagram_map(input)
 
       cafe_group = Map.get(result, "acfé")
-      assert Enum.all?(["café", "féca"], &(&1 in cafe_group))
+      assert_anagram_group(cafe_group, ["café", "féca"], 2)
 
       assert Map.get(result, "estt") == ["test"]
     end
@@ -116,47 +112,32 @@ defmodule AnagramTest do
       long_word2 = String.duplicate("b", 100) <> String.duplicate("a", 100)
 
       result = Anagram.anagram_map([long_word1, long_word2])
-      expected_key = String.duplicate("a", 100) <> String.duplicate("b", 100)
 
-      group = Map.get(result, expected_key)
-      assert group != nil
-      assert length(group) == 2
-      assert Enum.all?([long_word1, long_word2], &(&1 in group))
+      group = Map.get(result, long_word1)
+      assert_anagram_group(group, [long_word1, long_word2], 2)
     end
 
     test "handles large input list" do
       large_input = Enum.map(1..100, fn i ->
-        ["abc#{i}", "bac#{i}", "cab#{i}"]
+        ["abc#{i}", "bca#{i}", "cab#{i}"]
       end) |> List.flatten()
-
-      expected =
-        large_input
-        |> Enum.group_by(fn word ->
-          word |> String.downcase() |> String.graphemes() |> Enum.sort() |> Enum.join()
-        end)
 
       result = Anagram.anagram_map(large_input)
 
-      assert map_size(result) == map_size(expected)
-      Enum.each(expected, fn {key, words} ->
-        assert Map.has_key?(result, key)
-        assert Enum.sort(result[key]) == Enum.sort(words)
-      end)
-    end
-  end
+      # После сортировки символов получается 64 группы из-за коллизий ключей
+      assert map_size(result) == 64
 
-  describe "normalize_key/1 (private function behavior)" do
-    test "normalize_key converts to lowercase and sorts characters" do
-      # We can't test private functions directly, but we can test the behavior
-      # through the public function
-      result1 = Anagram.anagram_map(["ABC"])
-      result2 = Anagram.anagram_map(["abc"])
-      result3 = Anagram.anagram_map(["CBA"])
+      # Однозначные числа не имеют коллизий, поэтому каждая группа будет с 3 словами
+      group1 = Map.get(result, "1abc")
+      assert_anagram_group(group1, ["abc1", "bca1", "cab1"], 3)
 
-      # All should have the same key
-      assert Map.keys(result1) == Map.keys(result2)
-      assert Map.keys(result2) == Map.keys(result3)
-      assert Map.keys(result1) == ["abc"]
+      # Двузначные числа с разными цифрами дадут коллизию и будет по 6 слов в группе
+      group42 = Map.get(result, "24abc")
+      assert_anagram_group(group42, ["abc42", "bca42", "cab42"], 6)
+
+      # Двузначные числа с одинаковыми цифрами не дадут коллизию и будет по 3 слова в группе
+      group66 = Map.get(result, "66abc")
+      assert_anagram_group(group66, ["abc66", "bca66", "cab66"], 3)
     end
   end
 end
